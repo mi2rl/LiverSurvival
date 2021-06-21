@@ -5,7 +5,9 @@ import pytorch_lightning as pl
 
 from common import build_parser
 from model.cnn import CNNSurvival
-
+from argparse import ArgumentParser
+from liver import load_dataloader
+from transforms import tr_transforms, val_transforms
 
 def build_args(parser):
     parser = pl.Trainer.add_argparse_args(parser)
@@ -21,13 +23,14 @@ def main():
     # ------------
     # data
     # ------------
-    transform_list = []
-    # data_module = 
-
+    df_path = '/workspace/src/CDSS_Liver/tx_data_excel.xlsx'
+    data_path = '/workspace/src/1_Classification/data_preprocessed_liver'
+    dataloader, val_dataloader, test_dataloader = \
+    load_dataloader(df_path, data_path, tr_transforms, val_transforms, args.batch_size_tr, args.batch_size_val, args.n_cpu)
     # ------------
     # model
     # ------------
-    model = CNNSurvival()
+    model = CNNSurvival(args.out_size, args.norm)
 
     # ------------
     # training
