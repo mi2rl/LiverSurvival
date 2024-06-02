@@ -22,7 +22,7 @@ python train_cnn.py \
     --nb_epoch 70 \
     --batch_size 16 \
     --n_cpu 16 \
-    --output_folder '/workspace/src/Liver/result_final_2022_1024_8/0_bn_6mon_ft' \
+    --output_folder 'OUTPUT_PATH' \
     --gpus 0 \
     --gpu_1 0 \
     --gpu_2 1 \
@@ -41,7 +41,7 @@ python test.py \
     --backbone 'densenet121' \
     --random_seed 10 \
     --n_cpu 16 \
-    --output_folder '/path/to/trained/model' \
+    --output_folder 'OUTPUT_PATH' \
     --gpus 0 \
     --fold 0 \
     --norm 'bn' \
