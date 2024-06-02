@@ -2,17 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
-import math
-from torch.nn import BatchNorm3d, InstanceNorm3d, GroupNorm
-__all__ = ['DenseNet', 'densenet121', 'densenet169', 'densenet201', 'densenet264']
+from architecture.layers import _normalization_3d
 
-def _normalization_3d(inputs, norm='bn'):
-    if norm == 'bn':
-        return BatchNorm3d(inputs)
-    elif norm == 'in':
-        return InstanceNorm3d(inputs)
-    elif norm == 'gn':
-        return GroupNorm(max(32, inputs), inputs)
+__all__ = ['DenseNet', 'densenet121', 'densenet169', 'densenet201', 'densenet264', 'get_fine_tuning_parameters']
+
 
 class _DenseLayer(nn.Sequential):
 
@@ -75,6 +68,16 @@ class _Transition(nn.Sequential):
 
 
 class DenseNet(nn.Module):
+    """Densenet-BC model class
+    Args:
+        growth_rate (int) - how many filters to add each layer (k in paper)
+        block_config (list of 4 ints) - how many layers in each pooling block
+        num_init_features (int) - the number of filters to learn in the first convolution layer
+        bn_size (int) - multiplicative factor for number of bottle neck layers
+          (i.e. bn_size * k features in the bottleneck layer)
+        drop_rate (float) - dropout rate after each dense layer
+        num_classes (int) - number of classification classes
+    """
 
     def __init__(self,
                  #spatial_size,
@@ -88,6 +91,8 @@ class DenseNet(nn.Module):
 
         super(DenseNet, self).__init__()
 
+        #self.spatial_size = spatial_size
+        #self.sample_duration = sample_duration
         # First convolution
         self.features = nn.Sequential(
             OrderedDict([
@@ -133,18 +138,31 @@ class DenseNet(nn.Module):
             elif isinstance(m, nn.BatchNorm3d) or isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
+            #elif isinstance(m, nn.InstanceNorm3d) or isinstance(m, nn.InstanceNorm2d):
+            #    m.weight.data.fill_(1)
+            #    m.bias.data.zero_()
                 
         # Linear layer
-        self.classifier = torch.nn.Linear(num_features, num_classes)
-    '''
+        #self.classifier = torch.nn.Linear(num_features, num_classes)
+        self.classifier = nn.Sequential(
+            nn.Dropout(p=0.5),
+            nn.Linear(num_features, num_classes)
+        )
+        self.sigmoid = torch.nn.Sigmoid()
+
     def forward(self, x):
         features = self.features(x)
         out = F.relu(features, inplace=True)
         out = F.adaptive_avg_pool3d(out, (1,1,1))
         out = torch.flatten(out, 1)
+        #last_duration = int(math.ceil(self.sample_duration / 16))
+        #last_size = int(math.floor(self.spatial_size / 32))
+        #out = F.avg_pool3d(
+        #    out, kernel_size=(last_duration, last_size, last_size)).view(
+        #        features.size(0), -1)
         out = self.classifier(out)
+        out = self.sigmoid(out)
         return out
-    '''
 
 ##########################################################################################
 ##########################################################################################
@@ -183,3 +201,39 @@ def densenet264(**kwargs):
         block_config=(6, 12, 64, 48),
         **kwargs)
     return model
+
+##########################################################################################
+##########################################################################################
+
+def get_fine_tuning_parameters(model, ft_begin_index):
+
+    assert isinstance(ft_begin_index, int)
+    if ft_begin_index == 0:
+        print('WARNING: training full network because --finetune_begin_index=0')
+        return model.parameters()
+
+    ft_module_names = []
+    for i in range(ft_begin_index, 5):
+        ft_module_names.append('denseblock{}'.format(i))
+        ft_module_names.append('transition{}'.format(i))
+    ft_module_names.append('norm5')
+    ft_module_names.append('classifier')
+
+    parameters = []
+    param_names_to_finetune = []
+
+    for k, v in model.named_parameters():
+        for ft_module in ft_module_names:
+            if ft_module in k:
+                parameters.append({'params': v})
+                param_names_to_finetune.append(k)
+                break
+        else:
+            param_names_to_finetune.append(k)
+            parameters.append({'params': v, 'lr': 0.0})
+
+    for k, v in model.named_parameters():
+        if k not in param_names_to_finetune:
+            v.requires_grad = False
+
+    return parameters
