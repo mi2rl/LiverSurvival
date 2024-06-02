@@ -25,18 +25,16 @@ from sksurv.metrics import cumulative_dynamic_auc, brier_score, integrated_brier
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--nb_epoch", type=int, default=20, help="number of epochs of training")
-    parser.add_argument("--batch_size", type=int, default=2, help="size of the batches")
     parser.add_argument("--patch_size", type=tuple, default=(64, 180, 240))
-    parser.add_argument("--lr", type=float, default=1e-4, help="adam: learning rate")
     parser.add_argument("--out_size", type=int, default=5)
     parser.add_argument("--n_cpu", type=int, default=4, help="number of cpu threads to use during batch generation")
     parser.add_argument("--random_seed", type=int, default=10)
     parser.add_argument("--output_folder", type=str, default='')
-    parser.add_argument("--version", type=int, default=1)
+    parser.add_argument("--version", type=int, default=0)
     parser.add_argument("--gpus", type=int, default=1)
     parser.add_argument("--backbone", type=str, default='densenet121')
     parser.add_argument("--norm", type=str, default='bn')
+    parser.add_argument("--cat", type=str, default='ct')
     return parser.parse_args([])
 
 def load_model(opt, device):
@@ -69,8 +67,8 @@ def create_dataloaders(opt, tr_data_list, val_data_list, test_data_list, df, bre
     val_dataset = Liver_CustomDataset_surv(val_data_list, df, opt.patch_size, val_transforms, breaks, img=True)
     test_dataset = Liver_CustomDataset_surv(test_data_list, df, opt.patch_size, val_transforms, breaks, img=True)
 
-    train_loader = DataLoader(train_dataset, batch_size=24, shuffle=True, num_workers=opt.n_cpu)
-    val_loader = DataLoader(val_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=opt.n_cpu)
+    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=opt.n_cpu)
     test_loader = DataLoader(test_dataset, batch_size=4, shuffle=False, num_workers=1)
     return train_loader, val_loader, test_loader
 
