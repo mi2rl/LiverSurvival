@@ -2,9 +2,25 @@
 
 This repository contains the necessary scripts and instructions to run a complete pipeline including data preprocessing, training, and testing phases using a CNN model with DenseNet121 as the backbone.
 
+## Liver Region Segmentation
+To extract the liver mask from CT scans, use TotalSegmentator. Install the necessary libraries with the following command:
+
+```bash
+pip install TotalSegmentator
+```
+
+Then, to generate a liver mask file (liver.nii.gz) from a CT scan, use:
+
+```bash
+TotalSegmentator -i CT_FILE_PATH(.nii.gz) -o OUTPUT_FOLDER_PATH --task total
+```
+
+Find TotalSegmentator on [GitHub](https://github.com/wasserth/TotalSegmentator)
+
+
 ## Data Preprocessing
 
-First, prepare your data by running the preprocessing script. Ensure that your raw data is located in the correct directory or modify the script accordingly.
+Prepare your data by running the preprocessing script. Ensure that your raw data is located in the correct directory or modify the script accordingly.
 
 ```bash
 python data/preprocessing.py
