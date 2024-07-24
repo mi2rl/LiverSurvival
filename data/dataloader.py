@@ -18,7 +18,7 @@ class Liver_CustomDataset_surv(Dataset):
 
     def extract_tx(self, idn):
         """Extract treatment data from the dataframe for a given id."""
-        cols = [25, 26, 24, 29, 27, 31]  # Define columns to extract
+        cols = [16,17,18,19,20,21]  # Define columns to extract
         data = self.df.loc[self.df['id'] == int(idn), self.df.columns[cols]].values.flatten()
         return torch.tensor(data, dtype=torch.long)
 
