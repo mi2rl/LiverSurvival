@@ -17,55 +17,76 @@ TotalSegmentator -i CT_FILE_PATH(.nii.gz) -o OUTPUT_FOLDER_PATH --task total
 
 Find TotalSegmentator on [GitHub](https://github.com/wasserth/TotalSegmentator)
 
+## Data Structure
+
+Organize your data in the following structure:
+
+```
+- Volume
+    - 001_123123.nii.gz
+    - 002_124124.nii.gz
+    - ...
+- Mask
+    - 001_123123.nii.gz
+    - 002_124124.nii.gz
+    - ...
+- Preprocessed
+    - 001_123123.npy
+    - 002_124124.npy
+    - ...
+```
 
 ## Data Preprocessing
 
 Prepare your data by running the preprocessing script. Ensure that your raw data is located in the correct directory or modify the script accordingly.
 
 ```bash
-python data/preprocessing.py
+python data/preprocessing.py -f FOLD_PATH(.json) -e EXCEL_PATH(.xlsx)
 ```
+
+- `FOLD_PATH` refers to the JSON file containing patient numbers for each fold (train/validation/test).
+- `EXCEL_PATH` refers to the XLSX file containing patient information.
+
+For reference, example files randomly generated are available in the `example` folder.
 
 ## Training the Model
 
-Use the following command to train the network. The script uses DenseNet121 as the backbone, and various parameters can be adjusted based on your hardware and dataset specifics.
+Use the following command to train the network. 
+The script uses DenseNet121 as the backbone, and various parameters can be adjusted based on your hardware and dataset specifics.
 
 ```bash
 python train_cnn.py \
     --backbone 'densenet121' \
-    --random_seed 10 \
     --lr 5E-03 \
     --nb_epoch 70 \
     --batch_size 16 \
-    --n_cpu 16 \
-    --output_folder 'OUTPUT_PATH' \
     --gpus 0 \
-    --gpu_1 0 \
-    --gpu_2 1 \
     --fold 0 \
-    --norm 'bn' \
     --br 6 \
-    --cat 'ct'  
+    --cat 'ct'  \
+    --output_folder 'OUTPUT_PATH' \
+    --fold_path 'FOLD_PATH' \
+    --excel_path 'EXCEL_PATH' 
 ```
+
+- `OUTPUT_PATH` is the directory where the model will be saved.
 
 ## Testing the Model
 
-After training, test the model to evaluate its performance using the following command. Be sure to replace the `output_folder` with the path where your trained model is stored.
+After training, test the model to evaluate its performance using the following command. 
+Results for each metric can be found in `result.json` within the `OUTPUT_PATH`.
 
 ```bash
 python test.py \
     --backbone 'densenet121' \
-    --random_seed 10 \
-    --n_cpu 16 \
-    --output_folder 'OUTPUT_PATH' \
     --gpus 0 \
     --fold 0 \
-    --norm 'bn' \
-    --cat 'ct'
+    --cat 'ct' \
+    --output_folder 'OUTPUT_PATH' \
+    --fold_path 'FOLD_PATH' \
+    --excel_path 'EXCEL_PATH' 
 ```
-
-For further details on the scripts and parameters, please refer to the documentation in each script's header or the additional documentation provided.
 
 ## Contact
 
-For any questions or issues, please open an issue on this GitHub repository or contact the maintainers directly through the provided contact links.
+For any questions or issues, please open an issue on this GitHub repository
