@@ -1,26 +1,19 @@
 import argparse
 import torch
-import torch.nn as nn
 from augment import tr_transforms, val_transforms
-import SimpleITK as sitk
 import pandas as pd
 import numpy as np
-from time import time, sleep
 from torch.utils.data import DataLoader
 from dataloader import Liver_CustomDataset_surv
 from architecture.densenet import *
 from batchgenerators.utilities.file_and_folder_operations import *
-from utils.utils import log_class, random_seed_, str2bool
-from utils.utils import recursive_find_python_class, tr_val_test, make_surv_array, brk
+from utils.utils import recursive_find_python_class
 from tqdm import tqdm
 from collections import OrderedDict
-from inference import test_data
-import random
-from architecture.surv_Loss import surv_Loss
-from lifelines.utils import concordance_index
+
 from architecture.densenet import *
 from architecture.second import Second
-from sksurv.metrics import cumulative_dynamic_auc, brier_score, integrated_brier_score, concordance_index_ipcw
+from sksurv.metrics import cumulative_dynamic_auc, brier_score, concordance_index_ipcw
 
 
 def parse_arguments():
@@ -29,13 +22,15 @@ def parse_arguments():
     parser.add_argument("--out_size", type=int, default=5)
     parser.add_argument("--n_cpu", type=int, default=4, help="number of cpu threads to use during batch generation")
     parser.add_argument("--random_seed", type=int, default=10)
-    parser.add_argument("--output_folder", type=str, default='')
     parser.add_argument("--version", type=int, default=0)
     parser.add_argument("--gpus", type=int, default=1)
     parser.add_argument("--backbone", type=str, default='densenet121')
     parser.add_argument("--norm", type=str, default='bn')
     parser.add_argument("--cat", type=str, default='ct')
-    return parser.parse_args([])
+    parser.add_argument("--output_folder", type=str, default='')
+    parser.add_argument("-f", "--fold_path", type=str, help="fold(.json) path")
+    parser.add_argument("-e", "--excel_path", type=str, help="excel(.csv) path")
+    return parser.parse_args()
 
 def load_model(opt, device):
     model_fn = recursive_find_python_class(['architecture'], opt.backbone, current_module='architecture')
@@ -47,10 +42,9 @@ def load_model(opt, device):
     return model.to(device)
 
 def prepare_data(opt):
-    df_path = excel_path
-    df = pd.read_excel(df_path)
+    df = pd.read_excel(opt.excel_path)
     base_path = ''
-    fold = load_json(Fold_path)
+    fold = load_json(opt.fold_path)
 
     tr_idx = [x for x in fold['0'] + fold['1'] + fold['2'] + fold['3'] + fold['4'] if x not in fold[str(opt.fold)]]
     val_idx = fold[str(opt.fold)]
@@ -73,7 +67,6 @@ def create_dataloaders(opt, tr_data_list, val_data_list, test_data_list, df, bre
     return train_loader, val_loader, test_loader
 
 def evaluate_model(model, test_loader, device, opt, breaks):
-    tb = np.array([np.mean(breaks[i:i+2]) for i in range(len(breaks)-1)])
     test_pred_li = []
     test_death_step = []
     test_death_mo_step = []
@@ -139,7 +132,7 @@ def main():
     breaks = np.concatenate([np.linspace(0, 90, 16)[:-1], np.array([91])])
     opt.out_size = 15
 
-    train_loader, val_loader, test_loader = create_dataloaders(opt, tr_data_list, val_data_list, test_data_list, df, breaks)
+    _, _, test_loader = create_dataloaders(opt, tr_data_list, val_data_list, test_data_list, df, breaks)
 
     test_pred_li, test_death_step, test_death_mo_step, ts_step, td_step, tx_step = evaluate_model(model, test_loader, device, opt, breaks)
 
@@ -163,7 +156,7 @@ def main():
         'breaks': list(breaks),
         'tx': list(np.where(np.array(tx_step) == 1)[-1].astype(float)),
     }
-    save_json(result, f"{opt.output_folder}/result_val.json")
+    save_json(result, f"{opt.output_folder}/result.json")
 
 if __name__ == "__main__":
     main()

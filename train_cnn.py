@@ -1,19 +1,23 @@
 import argparse
-import torch
-import torch.nn as nn
-from augment import tr_transforms, val_transforms
-import pandas as pd
 import numpy as np
+import pandas as pd
+from tqdm import tqdm
 from time import time
+
+import torch
 from torch.utils.data import DataLoader
+
 from dataloader import Liver_CustomDataset_surv
 from architecture.densenet import *
-from batchgenerators.utilities.file_and_folder_operations import subfiles, maybe_mkdir_p, load_json, save_json
-from utils.utils import log_class, random_seed_, recursive_find_python_class
-from tqdm import tqdm
-from collections import OrderedDict
+from architecture.second import Second
 from architecture.surv_Loss import surv_Loss
 from lifelines.utils import concordance_index
+
+from batchgenerators.utilities.file_and_folder_operations import subfiles, maybe_mkdir_p, load_json
+
+from augment import tr_transforms, val_transforms
+from utils.utils import log_class, random_seed_, recursive_find_python_class
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -24,23 +28,22 @@ def parse_arguments():
     parser.add_argument("--out_size", type=int, default=5)
     parser.add_argument("--n_cpu", type=int, default=4, help="number of cpu threads to use during batch generation")
     parser.add_argument("--random_seed", type=int, default=10)
-    parser.add_argument("--output_folder", type=str, default='')
     parser.add_argument("--version", type=int, default=0)
     parser.add_argument("--gpus", type=int, default=1)
     parser.add_argument("--backbone", type=str, default='densenet121')
     parser.add_argument("--norm", type=str, default='bn')
-    parser.add_argument("--br", type=int, default=5)
-    parser.add_argument("--cat", type=str, default='ct')
-    parser.add_argument("--gpu_1", type=int, default=0)
-    parser.add_argument("--gpu_2", type=int, default=1)
+    parser.add_argument("--br", type=int, default=5, help="Interval Month")
+    parser.add_argument("--cat", type=str, default='ct', help="concat method")
     parser.add_argument("--fold", type=int, default=0)
+    parser.add_argument("--output_folder", type=str, default='')
+    parser.add_argument("-f", "--fold_path", type=str, help="fold(.json) path")
+    parser.add_argument("-e", "--excel_path", type=str, help="excel(.csv) path")
     return parser.parse_args()
 
 def prepare_data(opt):
-    df_path = '/workspace/src/Liver/CDSS_Liver/tx_data_excel.xlsx'
-    df = pd.read_excel(df_path)
+    df = pd.read_excel(opt.excel_path)
 
-    valid_id_list = [f.split('_')[-1].split('.')[0] for f in subfiles('Volume_5mm', join=False, suffix='.img')]
+    valid_id_list = [f.split('_')[-1].split('.')[0] for f in subfiles('Volume', join=False, suffix='.img')]
     death_all_list = []
 
     for valid_id in tqdm(valid_id_list):
@@ -52,25 +55,16 @@ def prepare_data(opt):
         if sample_df['death_01'].item() == 1:
             death_all_list.append(valid_id)
 
-    breaks = get_breaks(opt.br, death_all_list, df)
+    breaks = get_breaks(opt.br)
     opt.out_size = len(breaks) - 1
 
     tr_data_list, val_data_list, test_data_list = get_data_lists(opt, df)
     
     return df, breaks, tr_data_list, val_data_list, test_data_list
 
-def get_breaks(br, death_all_list, df):
-    def brk(death_all_list, df, br):
-        g_li = [df[df['id'] == int(d)]['death_mo'].item() for d in death_all_list]
-        g_li.sort()
-        n = len(g_li) // br
-        result = [g_li[i:i + n] for i in range(0, len(g_li), n)]
-        final = [0] + [r[-1] for r in result[:-2]] + [91]
-        return final
+def get_breaks(br):
 
-    if br == 5:
-        return np.array([0, 3.3, 8.3, 20, 41, 91])
-    elif br == 1:
+    if br == 1:
         return np.concatenate([np.linspace(0, 91, 92)[:-1], np.array([91])])
     elif br == 3:
         return np.concatenate([np.linspace(0, 90, 31)[:-1], np.array([91])])
@@ -84,19 +78,10 @@ def get_breaks(br, death_all_list, df):
         return np.concatenate([np.linspace(0, 72, 4)[:], np.array([91])])
     elif br == 36:
         return np.array([0., 36., 72., 91.])
-    elif br == 7:
-        return np.round(brk(death_all_list, df, br), 2)
-    elif br == 15:
-        return np.round(brk(death_all_list, df, br), 2)
-    elif br == 30:
-        return np.round(brk(death_all_list, df, br), 2)
-    elif br == 91:
-        breaks = np.round(brk(death_all_list, df, 91), 2)
-        return np.concatenate([breaks[:-14], breaks[-14::2]])
 
 def get_data_lists(opt, df):
     base_path = ''
-    fold = load_json(Fold_path)
+    fold = load_json(opt.fold_path)
 
     tr_idx = [x for x in fold['0'] + fold['1'] + fold['2'] + fold['3'] + fold['4'] if x not in fold[str(opt.fold)]]
     val_idx = fold[str(opt.fold)]
@@ -121,7 +106,6 @@ def initialize_model(opt, device):
         model_fn = recursive_find_python_class(['architecture_concat'], opt.backbone, current_module='architecture_concat')
         model = model_fn(num_classes=opt.out_size, norm=opt.norm, nb_cat=6, chn=128, ft=True).to(device)
 
-    model = nn.DataParallel(model, device_ids=[opt.gpu_1, opt.gpu_2])
     return model
 
 def make_surv_array(t, f, breaks):
@@ -170,7 +154,7 @@ def train_one_epoch(model, criterion, optimizer, train_loader, device, opt):
             pred = model(D_, ft)
         elif opt.cat == 'tx_ft':
             model = Second(num_classes=opt.out_size, norm=opt.norm, nb_cat=6, chn=128, ft=True).to(device)
-            pred = model(test_D_, (test_tx, test_ft))
+            pred = model(D_, (tx, ft))
         Loss_ = criterion(surv_s, surv_f, pred)
         Loss_.backward()
         optimizer.step()
